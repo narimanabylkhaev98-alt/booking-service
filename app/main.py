@@ -1,16 +1,17 @@
-from app.database import get_db, Base, engine
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.orm import Session
-from app import models, schemas
+from sqlalchemy.exc import IntegrityError
 
-from fastapi import Depends, FastAPI, HTTPException
+from app import models, schemas
+from app.database import get_db, Base, engine
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 
-@app.post("/users", response_model=schemas.UserRead, status_code=201 )
+@app.post("/users", response_model=schemas.UserRead, status_code=201)
 def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
     user = models.User(
         email=data.email,
@@ -19,7 +20,11 @@ def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
         business_name=data.business_name,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="User with this email already exists")
     db.refresh(user)
     return user
 
